@@ -5,10 +5,11 @@ class Platformer extends Phaser.Scene {
 
     init() {
         // variables and settings
-        this.ACCELERATION = 400;
-        this.DRAG = 1500;    // DRAG < ACCELERATION = icy slide
+        //this.ACCELERATION = 400;
+        //this.DRAG = 1500;    // DRAG < ACCELERATION = icy slide
         this.physics.world.gravity.y = 2000;
-        this.JUMP_VELOCITY = -650;
+        this.physics.world.TILE_BIAS = 24;
+        //this.JUMP_VELOCITY = -650;
         this.PARTICLE_VELOCITY = 50;
         this.SCALE = 2.0;
     }
@@ -43,36 +44,90 @@ class Platformer extends Phaser.Scene {
             frame: 151
         });
 
+        this.spawns = this.map.createFromObjects("Objects", {
+            name: "flag",
+            key: "tilemap_sheet",
+            frame: 111
+        });
+
+        this.powerUps = this.map.createFromObjects("Objects", {
+            name: "mushroom",
+            key: "tilemap_sheet",
+            frame: 128
+        });
+
         // Create animation for coins created from Object layer
         this.anims.create({
             key: 'coinAnim', // Animation key
             frames: this.anims.generateFrameNumbers('tilemap_sheet', 
                 {start: 151, end: 152}
             ),
-            frameRate: 10,  // Higher is faster
+            duration: 250,
+            //frameRate: 10,  // Higher is faster
+            repeat: -1      // Loop the animation indefinitely
+        });
+
+        this.anims.create({
+            key: 'spawnAnim', // Animation key
+            frames: this.anims.generateFrameNumbers('tilemap_sheet', 
+                {start: 111, end: 112}
+            ),
+            duration: 250,
+            //frameRate: 10,  // Higher is faster
             repeat: -1      // Loop the animation indefinitely
         });
 
         // Play the same animation for every memeber of the Object coins array
         this.anims.play('coinAnim', this.coins);
+        this.anims.play('spawnAnim', this.spawns);
 
         this.physics.world.enable(this.coins, Phaser.Physics.Arcade.STATIC_BODY);
+        this.physics.world.enable(this.spawns, Phaser.Physics.Arcade.STATIC_BODY);
+        this.physics.world.enable(this.powerUps, Phaser.Physics.Arcade.STATIC_BODY);
 
         // Create a Phaser group out of the array this.coins
         // This will be used for collision detection below.
         this.coinGroup = this.add.group(this.coins);
+        this.spawnGroup = this.add.group(this.spawns);
+        this.powerUpsGroup = this.add.group(this.powerUps);
 
-        // set up player avatar
-        my.sprite.player = this.physics.add.sprite(30, 345, "platformer_characters", "tile_0000.png");
-        my.sprite.player.setCollideWorldBounds(true);
-
-        // Enable collision handling
-        this.physics.add.collider(my.sprite.player, this.groundLayer);
+        //this.spawn = this.spawnGroup.getChildren()[0]; // get the first spawn point (there's only one in this level)
+        //this.start = {x: this.spawn.x, y: this.spawn.y};
 
         // set up Phaser-provided cursor key input
         cursors = this.input.keyboard.createCursorKeys();
 
+        this.altJump = this.input.keyboard.addKey('SPACE');
         this.rKey = this.input.keyboard.addKey('R');
+
+        // set up player avatar
+        //my.sprite.player = this.physics.add.sprite(30, 345, "platformer_characters", "tile_0000.png");
+        my.sprite.player = new Player(this, 30, 345, "platformer_characters", "tile_0000.png", cursors, this.altJump);
+
+        // Enable collision handling
+        this.physics.add.collider(my.sprite.player, this.groundLayer);
+        
+        // Add interaction for coins with coin callback
+        this.physics.add.overlap(my.sprite.player, this.coinGroup, (obj1, obj2) => {
+            obj2.destroy(); // remove coin on overlap
+        });
+
+        this.physics.add.overlap(my.sprite.player, this.spawnGroup, (obj1, obj2) => {
+            this.start = {x: obj2.x, y: obj2.y}; // update spawn point to current flag position
+        });
+
+        // Handle collision detection with power-ups
+        this.physics.add.overlap(my.sprite.player, this.powerUpsGroup, (obj1, obj2) => {
+            obj2.destroy(); // remove power-up on overlap
+            this.isPoweredUp = true;
+            let powerUpTween = this.tweens.add({
+                targets: my.sprite.player,
+                onComplete: () => {
+                    this.isPoweredUp = false;
+                    //my.sprite.player.set
+                }
+            });
+        });
 
         // debug key listener (assigned to D key)
         this.input.keyboard.on('keydown-D', () => {
@@ -93,35 +148,12 @@ class Platformer extends Phaser.Scene {
 
     }
 
-    update() {
-        if(cursors.left.isDown) {
-            my.sprite.player.setAccelerationX(-this.ACCELERATION);
-            my.sprite.player.resetFlip();
-            my.sprite.player.anims.play('walk', true);
-            // TODO: add particle following code here
+    update(time, delta) {
 
-        } else if(cursors.right.isDown) {
-            my.sprite.player.setAccelerationX(this.ACCELERATION);
-            my.sprite.player.setFlip(true, false);
-            my.sprite.player.anims.play('walk', true);
-            // TODO: add particle following code here
+        let dt = delta / 1000;
+        //let my = this.my;
 
-        } else {
-            // Set acceleration to 0 and have DRAG take over
-            my.sprite.player.setAccelerationX(0);
-            my.sprite.player.setDragX(this.DRAG);
-            my.sprite.player.anims.play('idle');
-            // TODO: have the vfx stop playing
-        }
-
-        // player jump
-        // note that we need body.blocked rather than body.touching b/c the former applies to tilemap tiles and the latter to the "ground"
-        if(!my.sprite.player.body.blocked.down) {
-            my.sprite.player.anims.play('jump');
-        }
-        if(my.sprite.player.body.blocked.down && Phaser.Input.Keyboard.JustDown(cursors.up)) {
-            my.sprite.player.body.setVelocityY(this.JUMP_VELOCITY);
-        }
+        my.sprite.player.update(time, delta);
 
         if(Phaser.Input.Keyboard.JustDown(this.rKey)) {
             this.scene.restart();
